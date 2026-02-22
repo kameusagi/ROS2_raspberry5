@@ -1,0 +1,26 @@
+【起動手順】
+# ROS 2 Jazzy システム環境の読み込み
+source /opt/ros/jazzy/setup.bash
+
+# ビルド
+・colcon build --symlink-install #全部
+・colcon build --packages-select my_bringup #部分
+
+# ビルド削除
+rm -rf build/ install/ log/
+
+# 自身のビルド結果を現在のターミナルに反映
+source install/setup.bash
+
+#　実行
+・ros2 run dummy_sensor01 dummy_sensor_node　# パッケージ名と、setup.pyで定義したexecutable名を指定
+・ros2 launch my_bringup led_system_launch.py #　複数ノードを一度に起動
+
+【構成】
+ros2_ws/
+ ├── src/
+ │    ├── sensor_interfaces/     # カスタムmsg定義
+ │    ├── sensor_drivers/        # 各センサドライバ
+ │    ├── sensor_core/           # センサ統合管理
+ │    └── sensor_monitor/        # PC側受信ノード
+ │    └── my_bringup/            # 複数ノードを一括起動するlaunch管理
