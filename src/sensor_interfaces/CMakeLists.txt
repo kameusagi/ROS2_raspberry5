@@ -12,7 +12,7 @@ find_package(rosidl_default_generators REQUIRED)
 # msgファイルの登録
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SensorData.msg"
-  "msg/SensorData2.msg"
+  "msg/JudgeData.msg"
 )
 
 ament_package()

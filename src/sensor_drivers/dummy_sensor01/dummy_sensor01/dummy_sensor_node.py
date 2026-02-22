@@ -14,7 +14,7 @@ class DummySensor(Node):
         msg = SensorData()
         msg.value = random.uniform(0.0, 10.0)
         self.publisher_.publish(msg)
-        self.get_logger().info(f'Published sensor value: {msg.value:.2f}')
+        # self.get_logger().info(f'Published sensor value: {msg.value:.2f}')
 
 def main(args=None):
     rclpy.init(args=args)
