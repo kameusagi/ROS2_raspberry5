@@ -8,9 +8,10 @@ class DummySensor(Node):
     def __init__(self):
         super().__init__('dummy_sensor_node')
         self.publisher_ = self.create_publisher(SensorData, '/sensor/data2', 10)
-        self.timer = self.create_timer(1.0, self.publish_sensor_data)
+        timer_period = 0.1  # 0.1秒ごとにセンサーデータを発行（10Hz）
+        self.timer = self.create_timer(timer_period, self.timer_callback)
 
-    def publish_sensor_data(self):
+    def timer_callback(self):
         msg = SensorData()
         msg.value = random.uniform(0.0, 10.0)
         self.publisher_.publish(msg)
@@ -22,6 +23,3 @@ def main(args=None):
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
