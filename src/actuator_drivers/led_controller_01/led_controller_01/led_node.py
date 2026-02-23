@@ -29,9 +29,9 @@ class LEDController(Node):
             # 最後の命令から1.5秒以上経過していたら、通信異常と判断
             elapsed = self.get_clock().now() - self.last_msg_time
             if elapsed.nanoseconds > 1.5 * 1e9:
-                self.get_logger().warn('Lost connection to Core! Emergency Stop (LED OFF)')
-                # ここでLEDを強制オフにする処理
+                self.get_logger().error('CRITICAL: Lost connection to Core! Shutting down node...')
                 self.led.off()
+                # raise SystemExit  # または rclpy.shutdown()
 
 def main(args=None):
     rclpy.init(args=args)
