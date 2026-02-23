@@ -1,58 +1,83 @@
 import rclpy
 from rclpy.node import Node
-from sensor_interfaces.msg import SensorData
-from sensor_interfaces.msg import JudgeData
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.callback_groups import ReentrantCallbackGroup
+from sensor_interfaces.msg import SensorData, JudgeData
+from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+import threading
 import time
 
-class DecisionNode(Node):
+class PriorityDecisionNode(Node):
     def __init__(self):
-        super().__init__('decision_node')
+        super().__init__('priority_decision_node')
 
-        self.group = ReentrantCallbackGroup()
+        # 1. 役割ごとにグループを完全に分ける (相互排他)
+        self.group_inference = MutuallyExclusiveCallbackGroup()
+        self.group_heartbeat = MutuallyExclusiveCallbackGroup()
+        self.group_sensor = MutuallyExclusiveCallbackGroup()
+        
         self.sensor = 0.0
         self.sensor2 = 0.0
+        self.latest_decision = 0 
 
-        # センサー2つを購読
-        self.create_subscription(SensorData, '/sensor/data', self.sensor_callback, 10, callback_group=self.group)
-        self.create_subscription(SensorData, '/sensor/data2', self.sensor2_callback, 10, callback_group=self.group)
+        # 2. センサー購読
+        self.create_subscription(SensorData, '/sensor/data', self.sensor_callback, 10, callback_group=self.group_sensor)
+        self.create_subscription(SensorData, '/sensor/data2', self.sensor2_callback, 10, callback_group=self.group_sensor)
         
-        # 判断結果（LEDへの命令）を送るパブリッシャー
         self.publisher_ = self.create_publisher(JudgeData, 'system/led_command', 10)
         
-        # 判断・送信用のタイマー
-        timer_period = 0.5 #0.5Hz = 2秒周期
-        # self.timer = self.create_timer(timer_period, self.timer_callback) # シングルスレッド用
-        self.timer = self.create_timer(timer_period, self.timer_callback, callback_group=self.group) # マルチスレッド用
+        # 3. 【脳】推論タイマー（重い処理グループへ）
+        self.inference_timer = self.create_timer(1.0, self.inference_callback, callback_group=self.group_inference)
+        
+        # 4. 【心拍】送信タイマー（高優先グループへ）
+        self.heartbeat_timer = self.create_timer(0.1, self.heartbeat_callback, callback_group=self.group_heartbeat)
 
-        self.get_logger().info('Multi-Threaded Decision Node Started!')
+        self.get_logger().info('Priority Guarded Decision Node Started!')
 
+    def sensor_callback(self, msg): 
+        self.sensor = msg.value
 
-    def sensor_callback(self, msg): self.sensor = msg.value
-    def sensor2_callback(self, msg): self.sensor2 = msg.value
+    def sensor2_callback(self, msg): 
+        self.sensor2 = msg.value
 
-    def timer_callback(self):
-        # 周期が来たら、その時の最新値で計算
-        # 0.5秒周期に対して1.0秒止まるので、シングルスレッドなら詰まります
-        time.sleep(2.0)
-        res = self.sensor * self.sensor2
-        cmd = JudgeData()
+    def inference_callback(self):
+        """重いAI推論"""
+        self.get_logger().info('  [Brain] Inference Start...')
+        time.sleep(2.5) # わざと周期を超えて止める
         calculation_result = float(self.sensor * self.sensor2)
-        if calculation_result > 5.0 and calculation_result < 50.0:
-            cmd.value = 1
-        else:
-            cmd.value = 0  
-        # self.get_logger().info(f'sensor={self.sensor:.2f}, sensor2={self.sensor2:.2f}, result={calculation_result:.2f}, sending command={cmd.value}')
+        self.latest_decision = 1 if 5.0 < calculation_result < 50.0 else 0
+        self.get_logger().warn(f'  [Brain] Inference Done. Result: {self.latest_decision}')
+
+    def heartbeat_callback(self):
+        """高頻度の送信（心拍）"""
+        cmd = JudgeData()
+        cmd.value = self.latest_decision
         self.publisher_.publish(cmd)
 
 def main():
-    rclpy.init(args=None)
-    node = DecisionNode()
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
+    rclpy.init()
+    node = PriorityDecisionNode()
+
+    # --- 優先度ガードの核心部 ---
+    
+    # A. 【高優先】心拍とセンサー受信を担当するエグゼキュータ
+    # 本来はもっと細かく分けられますが、まずは「重い推論」以外をここに入れます
+    high_priority_executor = MultiThreadedExecutor()
+    high_priority_executor.add_node(node)
+
+    # B. 【低優先】重いAI推論だけを担当するエグゼキュータ
+    # これを別スレッドで回すことで、心拍側のループをブロックさせないようにします
+    low_priority_executor = SingleThreadedExecutor() 
+    low_priority_executor.add_node(node)
+
+    # 別スレッドで高優先エグゼキュータを起動
+    high_thread = threading.Thread(target=high_priority_executor.spin, daemon=True)
+    high_thread.start()
+
     try:
-        executor.spin()
+        # メインスレッドで低優先（推論）エグゼキュータを起動
+        low_priority_executor.spin()
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
