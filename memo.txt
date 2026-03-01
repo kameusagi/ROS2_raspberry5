@@ -25,6 +25,12 @@ ros2_ws/
  │    └── sensor_monitor/        # PC側受信ノード
  │    └── my_bringup/            # 複数ノードを一括起動するlaunch管理
 
+【ROS2コマンド集】
+　参考：https://qiita.com/NeK/items/33d62c61fc1a8c0c233e
+    colcon build --symlink-install
+    colcon build --symlink-install --packages-up-to [package1 package2 ...]
+    colcon build --cmake-clean-cache
+    ros2 pkg create my_node --build-type ament_python --dependencies rclpy
 
 【スレッドのガントチャート】
 # LTTng本体と関連ツールのインストール

@@ -1,7 +1,7 @@
 build/
 install/
 log/
-
+**/output/
 
 .lgd-nfy0
 
