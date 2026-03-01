@@ -1,0 +1,71 @@
+「192.168.x.x」などの一般的なローカルネットワーク（家庭用Wi-Fi環境）を想定した、WSL2とRaspberry Pi 5のROS 2通信手順を整理します。
+
+この環境では、特別な設定なしで「お互いが見える」のが理想ですが、WSL2の特殊なネットワーク構造が邪魔をすることが多いため、以下の構成で進めるのが最もスムーズです。
+
+1. 送信部（Raspberry Pi 5）の設定
+ラズパイは「センサーデータをパブリッシュ（発行）する」役割です。
+
+IPアドレスの固定（推奨）:
+Wi-Fi設定などでIPが変わらないようにしておくと、後で便利です（例: 192.168.1.50）。
+
+環境変数の設定 (~/.bashrc に追記):
+
+Bash
+# 通信グループIDを統一
+export ROS_DOMAIN_ID=30
+# 通信エンジンを CycloneDDS に固定（安定性が高いため）
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+追記後、source ~/.bashrc を実行してください。
+
+起動するコマンド:
+
+Bash
+# テスト用の信号を出し続ける
+ros2 topic pub /pi_signal std_msgs/msg/String "data: 'Hello from Pi5'"
+2. 受信部（WSL2 / Windows PC）の設定
+WSL2は「データを受け取ってCSVや画像に保存する」役割です。
+
+WSLのネットワーク設定 (.wslconfig）:
+WSL2は通常、Windowsの中に隠れています。これを表に出すために、Windows側の C:\Users\ユーザー名\.wslconfig に以下を書き、PowerShellで wsl --shutdown して再起動してください。
+
+Ini, TOML
+[wsl2]
+networkingMode=mirrored
+環境変数の設定 (~/.bashrc に追記):
+ラズパイ側と完全に同じ設定にします。
+
+Bash
+export ROS_DOMAIN_ID=30
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+追記後、source ~/.bashrc を実行してください。
+
+Windowsファイアウォールの解除:
+Windowsの「セキュリティ」設定で、プライベートネットワークのファイアウォールを一時的にオフにします（これが原因で届かないケースが8割です）。
+
+3. 通信確認の具体的な流れ
+[ラズパイ] で ros2 topic pub /pi_signal ... を実行。
+
+[WSL2] で ros2 topic list を実行。
+
+ここに /pi_signal が出てくれば成功です。
+
+[WSL2] で ros2 topic echo /pi_signal を実行。
+
+文字が流れてきたら、物理的な通信とROS 2のレイヤーの両方が繋がっています。
+
+4. 繋がった後の「データ保存」の動かし方
+通信が通ったら、いよいよ本番の保存プログラムを動かします。
+
+ラズパイ側:
+カメラノード（v4l2_cameraなど）と、先ほどの加速度センサー取得プログラムを「ノード」として起動します。
+
+WSL2側:
+最初の方で作った 「outputフォルダにCSVと画像を保存するPythonスクリプト」 を起動します。
+
+これにより、**「ラズパイは計測するだけ」「PCは保存するだけ」**という負荷分散が完了します。
+
+💡 最後に確認してほしいこと
+WSL2側で hostname -I を打ったときに、ラズパイと同じ 192.168.x.x のIPが表示されていますか？
+もし表示されていれば、networkingMode=mirrored が正しく効いています。
+
+まずは ros2 topic list で相手の名前が見えるか、試してみてください！見えない場合は、Windowsのファイアウォール設定をもう一度見直しましょう。
